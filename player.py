@@ -3,7 +3,6 @@
 import argparse
 import os
 import sys
-import threading
 import time
 
 import glib
@@ -12,22 +11,18 @@ import pygst
 pygst.require("0.10")
 import gst
 
-class Player(threading.Thread):
+class Player(object):
 	def __init__(self, imagesink=None, medium=[]):
 		super(Player, self).__init__()
 
 		# Populate Playlist from argv
+		self.playlist_pos = 0
 		self.playlist = []
 		for f in medium:
 			if os.path.isfile(f):
 				self.playlist.append("file://%s" % os.path.abspath(f))
 			else:
 				self.playlist.append("uri", f)
-		self.playlist_lock = threading.Lock()
-
-		# This event is used to notify the player when gstreamer is done
-		# (it will either quit or advance to the next playlist item)
-		self.finished = threading.Condition()
 
 		# Create the actual gstreamer setup (it is probably quite crappy,
 		# I was unable to find any real documentation or best-practices list
@@ -78,8 +73,7 @@ class Player(threading.Thread):
 	def quit(self):
 		# User requested shutdown
 		# Clear the playlist
-		with self.playlist_lock:
-			self.playlist = []
+		self.playlist = []
 
 		# Post an End-Of-Stream so the pipeline gets destroyed
 		self.bus.post(gst.message_new_eos(self.bus))
@@ -188,20 +182,18 @@ class Player(threading.Thread):
 			return self.on_have_xwindow_id(message.src)
 #		print >>sys.stderr, 'message_name: %s' % message_name
 
-	def run(self):
-		pos = 0
-		while True:
-			with self.playlist_lock:
-				if pos >= len(self.playlist):
-					break
-				else:
-					next_medium = self.playlist[pos]
-					pos += 1
-			self.player.set_property("uri", next_medium)
-			self.player.set_state(gst.STATE_PLAYING)
-			with self.finished:
-				self.finished.wait()
-		loop.quit()
+	def process_playlist(self):
+		if self.playlist_pos >= len(self.playlist):
+			loop.quit()
+			return False
+
+		# Load next medium and advance index
+		next_medium = self.playlist[self.playlist_pos]
+		self.playlist_pos += 1
+
+		self.player.set_property("uri", next_medium)
+		self.player.set_state(gst.STATE_PLAYING)
+		return True
 
 	def on_message(self, bus, message):
 #		print >>sys.stderr, 'bus-message'
@@ -215,22 +207,21 @@ class Player(threading.Thread):
 			err,debug = message.parse_error()
 			print "Error: %s" % err, debug
 		self.player.set_state(gst.STATE_NULL)
-		with self.finished:
-			self.finished.notify()
+		self.process_playlist()
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser(description='GStreamer based slick media player')
 	parser.add_argument('-vo', dest='imagesink', help='Overwrite the default video output')
 	parser.add_argument('medium', nargs='+', help='Media which should be played')
 	options = parser.parse_args()
-	try:
-		main_thread = Player(**options.__dict__)
-		main_thread.start()
 
-		gobject.threads_init()
-		loop = glib.MainLoop()
+	gobject.threads_init()
+	loop = glib.MainLoop()
+	player = Player(**options.__dict__)
+	if not player.process_playlist():
+		print >>sys.stderr, "Could not load playlist!"
+		sys.exit(1)
+	try:
 		loop.run()
 	except KeyboardInterrupt:
-		main_thread.player.set_state(gst.STATE_NULL)
-		with main_thread.finished:
-			main_thread.finished.notify()
+		loop.quit()
