@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import argparse
 import os
 import sys
 import threading
@@ -12,12 +13,12 @@ pygst.require("0.10")
 import gst
 
 class Player(threading.Thread):
-	def __init__(self):
+	def __init__(self, imagesink=None, medium=[]):
 		super(Player, self).__init__()
 
 		# Populate Playlist from argv
 		self.playlist = []
-		for f in sys.argv[1:]:
+		for f in medium:
 			if os.path.isfile(f):
 				self.playlist.append("file://%s" % os.path.abspath(f))
 			else:
@@ -34,7 +35,11 @@ class Player(threading.Thread):
 		# from #gstreamer at FreeNode (thanks too)
 		self.player = gst.element_factory_make("playbin2", "player")
 
-		self.imagesink = gst.element_factory_make("autovideosink", "imagesink")
+		if imagesink is None:
+			self.imagesink = gst.element_factory_make("autovideosink", "imagesink")
+		else:
+			self.imagesink = gst.element_factory_make(imagesink, "imagesink")
+
 		self.imagesink.get_pad("sink").add_event_probe(self.on_sink_event)
 		self.player.set_property("video-sink", self.imagesink)
 
@@ -214,8 +219,12 @@ class Player(threading.Thread):
 			self.finished.notify()
 
 if __name__ == '__main__':
+	parser = argparse.ArgumentParser(description='GStreamer based slick media player')
+	parser.add_argument('-vo', dest='imagesink', help='Overwrite the default video output')
+	parser.add_argument('medium', nargs='+', help='Media which should be played')
+	options = parser.parse_args()
 	try:
-		main_thread = Player()
+		main_thread = Player(**options.__dict__)
 		main_thread.start()
 
 		gobject.threads_init()
