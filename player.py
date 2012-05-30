@@ -79,6 +79,13 @@ class Player(threading.Thread):
 		# Post an End-Of-Stream so the pipeline gets destroyed
 		self.bus.post(gst.message_new_eos(self.bus))
 
+	def un_pause(self):
+		state = self.player.get_state()[1]
+		if state == gst.STATE_PAUSED:
+			self.player.set_state(gst.STATE_PLAYING)
+		else:
+			self.player.set_state(gst.STATE_PAUSED)
+	
 	def on_key_press(self, key):
 		#print 'Key pressed: %s' % structure.to_string()
 		return True
@@ -100,6 +107,9 @@ class Player(threading.Thread):
 
 		if key in seek_keys:
 			self.seek(seek_keys[key])
+			return False
+		elif key == u'space':
+			self.un_pause()
 			return False
 		elif key in volume_keys:
 			self.change_volume(volume_keys[key])
