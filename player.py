@@ -23,7 +23,7 @@ class Player(threading.Thread):
 			else:
 				self.playlist.append("uri", f)
 		self.playlist_lock = threading.Lock()
-		
+
 		# This event is used to notify the player when gstreamer is done
 		# (it will either quit or advance to the next playlist item)
 		self.finished = threading.Condition()
@@ -38,6 +38,14 @@ class Player(threading.Thread):
 		self.imagesink.get_pad("sink").add_event_probe(self.on_sink_event)
 		self.player.set_property("video-sink", self.imagesink)
 
+		self.volume = gst.element_factory_make("volume", "volume")
+		self.audiosink = gst.element_factory_make("autoaudiosink", "audiosink")
+		self.audioout = gst.Bin()
+		self.audioout.add(self.volume, self.audiosink)
+		gst.element_link_many(self.volume, self.audiosink)
+		self.audioout.add_pad(gst.GhostPad("sink", self.volume.get_pad("sink")))
+		self.player.set_property("audio-sink", self.audioout)
+
 		self.bus = self.player.get_bus()
 		self.bus.add_signal_watch()
 		self.bus.enable_sync_message_emission()
@@ -50,6 +58,28 @@ class Player(threading.Thread):
 		if seek_ns < 0:
 			seek_ns = 0
 		self.player.seek_simple(gst.FORMAT_TIME, gst.SEEK_FLAG_FLUSH, seek_ns)
+
+	def change_volume(self, delta):
+		v = self.volume.get_property("volume")
+		v += delta
+		if v < 0:
+			v = 0
+		# More than 500% Volume is usally not a good idea
+		if v > 5:
+			v = 5
+		self.volume.set_property("volume", v)
+
+	def toggle_mute(self):
+		self.volume.set_property("mute", not self.volume.get_property("mute"))
+
+	def quit(self):
+		# User requested shutdown
+		# Clear the playlist
+		with self.playlist_lock:
+			self.playlist = []
+
+		# Post an End-Of-Stream so the pipeline gets destroyed
+		self.bus.post(gst.message_new_eos(self.bus))
 
 	def on_key_press(self, key):
 		#print 'Key pressed: %s' % structure.to_string()
@@ -65,21 +95,26 @@ class Player(threading.Thread):
 			u'Prior': 600
 		}
 
+		volume_keys = {
+			u'9': -0.5,
+			u'0':  0.5
+		}
+
 		if key in seek_keys:
 			self.seek(seek_keys[key])
 			return False
-		elif key == 'q':
-			# User requested shutdown
-			# Clear the playlist
-			with self.playlist_lock:
-				self.playlist = []
-
-			# Post an End-Of-Stream so the pipeline gets destroyed
-			self.bus.post(gst.message_new_eos(self.bus))
+		elif key in volume_keys:
+			self.change_volume(volume_keys[key])
+			return False
+		elif key == u'm':
+			self.toggle_mute()
+			return False
+		elif key == u'q':
+			self.quit()
 			return False
 		print >>sys.stderr, 'Key released: %s' % key
 		return True
-			
+
 	def on_navigation_event(self, structure):
 		event = structure['event']
 		if event == 'key-press':
@@ -152,7 +187,7 @@ class Player(threading.Thread):
 if __name__ == '__main__':
 	main_thread = Player()
 	main_thread.start()
-	
+
 	gobject.threads_init()
 	loop = glib.MainLoop()
-	loop.run()			
+	loop.run()
