@@ -2,7 +2,6 @@
 
 import os
 import sys
-import thread
 import threading
 import time
 
@@ -12,9 +11,27 @@ import pygst
 pygst.require("0.10")
 import gst
 
-class Player:
+class Player(threading.Thread):
 	def __init__(self):
-		self.finished = threading.Event()
+		super(Player, self).__init__()
+
+		# Populate Playlist from argv
+		self.playlist = []
+		for f in sys.argv[1:]:
+			if os.path.isfile(f):
+				self.playlist.append("file://%s" % os.path.abspath(f))
+			else:
+				self.playlist.append("uri", f)
+		self.playlist_lock = threading.Lock()
+		
+		# This event is used to notify the player when gstreamer is done
+		# (it will either quit or advance to the next playlist item)
+		self.finished = threading.Condition()
+
+		# Create the actual gstreamer setup (it is probably quite crappy,
+		# I was unable to find any real documentation or best-practices list
+		# for it, all I had was some tutorials (thanks guys), a few pointers
+		# from #gstreamer at FreeNode (thanks too)
 		self.player = gst.element_factory_make("playbin2", "player")
 
 		self.imagesink = gst.element_factory_make("autovideosink", "imagesink")
@@ -52,7 +69,13 @@ class Player:
 			self.seek(seek_keys[key])
 			return False
 		elif key == 'q':
-			loop.quit()
+			# User requested shutdown
+			# Clear the playlist
+			with self.playlist_lock:
+				self.playlist = []
+
+			# Post an End-Of-Stream so the pipeline gets destroyed
+			self.bus.post(gst.message_new_eos(self.bus))
 			return False
 		print >>sys.stderr, 'Key released: %s' % key
 		return True
@@ -96,30 +119,19 @@ class Player:
 			return self.on_have_xwindow_id(message.src)
 #		print >>sys.stderr, 'message_name: %s' % message_name
 
-	def start(self):
-		for f in sys.argv[1:]:
-			self.finished.clear()
-			if os.path.isfile(f):
-				self.player.set_property("uri",
-					"file://%s" % os.path.abspath(f))
-			else:
-				self.player.set_property("uri", f)
-			sys.stderr.write("\nPlaying %s\n" % f)
-			self.player.set_state(gst.STATE_PLAYING)
-			while not self.finished.wait(0.1):
-				if self.finished.is_set():
+	def run(self):
+		pos = 0
+		while True:
+			with self.playlist_lock:
+				if pos >= len(self.playlist):
 					break
-				try:
-					pos = self.player.query_position(gst.FORMAT_TIME, None)
-				except gst.QueryError:
-					sys.stdout.write("\r?.?? / ?.??")
 				else:
-					sys.stdout.write("\r%d.%02d / %d.%02d" % (
-						pos[0] / 1000000000,
-						(pos[0] / 10000000) % 100,
-						pos[1] / 1000000000,
-						(pos[1] / 10000000) % 100))
-				sys.stdout.flush()
+					next_medium = self.playlist[pos]
+					pos += 1
+			self.player.set_property("uri", next_medium)
+			self.player.set_state(gst.STATE_PLAYING)
+			with self.finished:
+				self.finished.wait()
 		loop.quit()
 
 	def on_message(self, bus, message):
@@ -134,11 +146,13 @@ class Player:
 			err,debug = message.parse_error()
 			print "Error: %s" % err, debug
 		self.player.set_state(gst.STATE_NULL)
-		self.finished.set()
+		with self.finished:
+			self.finished.notify()
 
-mainclass = Player()
-thread.start_new_thread(mainclass.start, ())
-gobject.threads_init()
-loop = glib.MainLoop()
-loop.run()
-				
+if __name__ == '__main__':
+	main_thread = Player()
+	main_thread.start()
+	
+	gobject.threads_init()
+	loop = glib.MainLoop()
+	loop.run()			
