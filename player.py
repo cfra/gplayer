@@ -183,9 +183,14 @@ class Player(threading.Thread):
 			self.finished.notify()
 
 if __name__ == '__main__':
-	main_thread = Player()
-	main_thread.start()
+	try:
+		main_thread = Player()
+		main_thread.start()
 
-	gobject.threads_init()
-	loop = glib.MainLoop()
-	loop.run()
+		gobject.threads_init()
+		loop = glib.MainLoop()
+		loop.run()
+	except KeyboardInterrupt:
+		main_thread.player.set_state(gst.STATE_NULL)
+		with main_thread.finished:
+			main_thread.finished.notify()
