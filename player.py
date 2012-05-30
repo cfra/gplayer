@@ -59,11 +59,9 @@ class Player(threading.Thread):
 			seek_ns = 0
 		self.player.seek_simple(gst.FORMAT_TIME, gst.SEEK_FLAG_FLUSH, seek_ns)
 
-	def change_volume(self, delta):
+	def change_volume(self, fact):
 		v = self.volume.get_property("volume")
-		v += delta
-		if v < 0:
-			v = 0
+		v *= fact
 		# More than 500% Volume is usally not a good idea
 		if v > 5:
 			v = 5
@@ -96,8 +94,8 @@ class Player(threading.Thread):
 		}
 
 		volume_keys = {
-			u'9': -0.5,
-			u'0':  0.5
+			u'9':  0.9,
+			u'0':  1.2
 		}
 
 		if key in seek_keys:
