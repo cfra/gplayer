@@ -79,18 +79,18 @@ class Player(object):
 		self.bus.post(gst.message_new_eos(self.bus))
 
 	def switch(self, what):
-		self.player.set_state(gst.STATE_PAUSED)
-		current = self.player.get_property("current-%s" % what)
 		maximum = self.player.get_property("n-%s" % what)
-		print 'Switching audio from %d/%d' % (current, maximum)
+		if maximum <= 0:
+			return # There aren't multiple whats, so we can't switch anything
+
+		# The tracks count from zero. This implements cycling through all tracks
+		current = self.player.get_property("current-%s" % what)
 		current += 1
 		if current >= maximum:
 			current = 0
+
+		# Actually set the new track
 		self.player.set_property("current-%s" % what, current)
-		print 'Switched audio to %d/%d' % (current, maximum)
-		current = self.player.get_property("current-%s" % what)
-		print 'Actually switched audio to %d/%d' % (current, maximum)
-		self.player.set_state(gst.STATE_PLAYING)
 
 	def un_pause(self):
 		state = self.player.get_state()[1]
@@ -119,7 +119,8 @@ class Player(object):
 		}
 
 		switch_keys = {
-			u'backslash': 'audio'
+			u'a': 'audio',
+			u'j': 'text',
 		}
 
 		if key in seek_keys:
