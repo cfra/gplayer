@@ -12,27 +12,25 @@ import gst
 
 class Player(object):
     def __init__(self, imagesink=None, medium=[]):
-        super(Player, self).__init__()
+        """Store the settings and register the real setup function in event loop"""
+        self.settings = {}
+        self.settings['imagesink'] = imagesink
+        self.settings['medium'] = medium
 
-        # Populate Playlist from argv
-        self.playlist_pos = 0
-        self.playlist = []
-        for f in medium:
-            if os.path.isfile(f):
-                self.playlist.append("file://%s" % os.path.abspath(f))
-            else:
-                self.playlist.append("uri", f)
+        # We will only start the player, once the event loop is running
+        glib.idle_add(self.setup)
 
-        # Create the actual gstreamer setup (it is probably quite crappy,
-        # I was unable to find any real documentation or best-practices list
-        # for it, all I had was some tutorials (thanks guys), a few pointers
-        # from #gstreamer at FreeNode (thanks too)
+    def setup_gstreamer(self):
+        """Create the actual gstreamer setup (it is probably quite crappy,
+           I was unable to find any real documentation or best-practices list
+           for it, all I had was some tutorials (thanks guys), a few pointers
+           from #gstreamer at FreeNode (thanks too)"""
         self.player = gst.element_factory_make("playbin2", "player")
 
-        if imagesink is None:
+        if self.settings['imagesink'] is None:
             self.imagesink = gst.element_factory_make("autovideosink", "imagesink")
         else:
-            self.imagesink = gst.element_factory_make(imagesink, "imagesink")
+            self.imagesink = gst.element_factory_make(self.settings['imagesink'], "imagesink")
 
         self.imagesink.get_pad("sink").add_event_probe(self.on_sink_event)
         self.player.set_property("video-sink", self.imagesink)
@@ -50,6 +48,29 @@ class Player(object):
         self.bus.enable_sync_message_emission()
         self.bus.connect("message", self.on_message)
         self.bus.connect("sync-message::element", self.on_sync_message)
+
+    def setup_playlist(self):
+        """Build a list from all the urls given to our constructor"""
+        self.playlist_pos = 0
+        self.playlist = []
+        for f in self.settings['medium']:
+            if os.path.isfile(f):
+                self.playlist.append("file://%s" % os.path.abspath(f))
+            else:
+                self.playlist.append(f)
+
+        # Call process_playlist to load first medium and set correct state
+        self.process_playlist()
+
+    def setup(self):
+        """This function does the actual initialization"""
+        super(Player, self).__init__()
+
+        self.setup_gstreamer()
+        self.setup_playlist()
+
+        # Return false means that this is not rescheduled
+        return False
 
     def seek(self, off):
         pos_int = self.player.query_position(gst.FORMAT_TIME, None)[0]
@@ -219,9 +240,7 @@ if __name__ == '__main__':
     gobject.threads_init()
     loop = glib.MainLoop()
     player = Player(**options.__dict__)
-    if not player.process_playlist():
-        print >>sys.stderr, "Could not load playlist!"
-        sys.exit(1)
+
     try:
         loop.run()
     except KeyboardInterrupt:
