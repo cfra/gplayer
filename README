@@ -1,0 +1,18 @@
+gplayer
+
+This is a minimalist media player intended to provide you with control
+at your fingertips. It also aims to make mplayer users feel at home in
+the few controls it provides.
+
+It is built using GStreamer, and may also be interesting if you want
+to find out how to do specific things with GStreamer.
+
+Current controls:
+    9/0          decrease/increase volume
+                 caution, this can increase volume up to 5 times original volume
+    left/right   seek backward/forward 10 seconds
+    up/down      seek backward/forward 60 seconds
+    page up/down seek backward/forward 10 minutes
+    a            switch to the next audio track
+    j            switch to the next subtitle track
+    q            quit the player

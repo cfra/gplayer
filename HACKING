@@ -1,0 +1,28 @@
+This project will hopefully develop as I (or you :p) happen to run
+into current limitations.
+
+One design aspect I would like to keep though, is that it does not
+depend on a specific environment. Ideally, it will be usable usin
+either directfb output, xvimagesink or anything else which may come
+up.
+I ackowledge that some things might not be solvable using only
+generic/GStreamer interfaces. Using X/GTK/Whatever interfaces is
+fine with me, as long as it does not break other environments.
+
+There many things which might be done to improve this player, a few
+that come to my mind right now are:
+
+    - test if audio only works
+    - implement full screen support on X
+    - handle keyboard layouts in a sane way (i.e: find a way to
+      make # change the audio track and have it behave as expected
+      on different keyboard layouts)
+    - turn off screensaver on X
+    - some people might find fullscreen mode interesting
+      (for me, might window manager solves this sufficiently well)
+    - add -ao as option
+    - add -vf and -af as options - these could imho accept gstreamer
+      pipeline descriptions
+    - draw some kind of u.i. - if one could mix that into the stream
+      to the imagesink, this would work on all thinkable environments
+      out of the box, imho

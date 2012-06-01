@@ -1,0 +1,18 @@
+To use gplayer, you need
+
+    - python bindings to glib
+    - python binding to gstreamer
+
+    - urwid - used for terminal input
+
+If you use python older than 2.7 you also need to install
+
+    - argparse
+
+manually.
+
+
+To install gplayer, just run:
+
+    python setup.py build
+    sudo python setup.py install
