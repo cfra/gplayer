@@ -1,14 +1,19 @@
 #!/usr/bin/python
 
 import argparse
+import atexit
 import os
 import sys
+import termios
+import tty
 
 import glib
 import gobject
 import pygst
 pygst.require("0.10")
 import gst
+
+import urwid.escape
 
 class Player(object):
     def __init__(self, imagesink=None, medium=[]):
@@ -62,11 +67,23 @@ class Player(object):
         # Call process_playlist to load first medium and set correct state
         self.process_playlist()
 
+    def setup_terminal(self):
+        """Set up terminal for raw input and add event handler"""
+
+        fd = sys.stdin.fileno()
+        settings = termios.tcgetattr(fd)
+        atexit.register(termios.tcsetattr, fd, termios.TCSAFLUSH, settings)
+        tty.setraw(fd)
+
+        self.terminal_queue = []
+        glib.io_add_watch(sys.stdin.fileno(), glib.IO_IN, self.terminal_event)
+
     def setup(self):
         """This function does the actual initialization"""
         super(Player, self).__init__()
 
         self.setup_gstreamer()
+        self.setup_terminal()
         self.setup_playlist()
 
         # Return false means that this is not rescheduled
@@ -118,7 +135,36 @@ class Player(object):
             self.player.set_state(gst.STATE_PLAYING)
         else:
             self.player.set_state(gst.STATE_PAUSED)
-    
+
+    def terminal_event(self, source, unused_condition):
+        buf = os.read(source, 512)
+        if not buf:
+            # Input was closed, unregister event handler
+            return False
+        self.terminal_queue += [ ord(char) for char in buf ]
+        events, leftover = urwid.escape.process_keyqueue(self.terminal_queue, False)
+        self.terminal_queue = leftover
+
+        translation_map = {
+                'left': 'Left',
+                'right': 'Right',
+                'down': 'Down',
+                'up': 'Up',
+                'page down': 'Next',
+                'page up': 'Prior'
+        }
+
+        for event in events:
+#            print event
+            if event in translation_map:
+                event = translation_map[event]
+            try:
+                self.on_key_release(event)
+            except:
+                sys.excepthook(*sys.exc_info())
+
+        return True
+
     def on_key_press(self, key):
         #print 'Key pressed: %s' % structure.to_string()
         return True
