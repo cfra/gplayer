@@ -21,7 +21,6 @@ import atexit
 import os
 import sys
 import termios
-import tty
 
 import glib
 import gobject
@@ -89,7 +88,18 @@ class Player(object):
         fd = sys.stdin.fileno()
         settings = termios.tcgetattr(fd)
         atexit.register(termios.tcsetattr, fd, termios.TCSAFLUSH, settings)
-        tty.setraw(fd)
+
+        # Setting rawmode is somewhat based on tty.py by Steen Lumholt
+        rawmode = termios.tcgetattr(fd)
+        rawmode[0] &= ~(termios.BRKINT | termios.INPCK | termios.ICRNL | termios.ISTRIP | termios.IXON)
+        rawmode[1] &= ~(termios.OPOST)
+        rawmode[2] &= ~(termios.CSIZE | termios.PARENB)
+        rawmode[2] |= termios.CS8
+        rawmode[3] &= ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
+        rawmode[3] |= termios.ISIG
+        rawmode[6][termios.VMIN] = 1
+        rawmode[6][termios.VTIME] = 0
+        termios.tcsetattr(fd, termios.TCSANOW, rawmode)
 
         self.terminal_queue = []
         glib.io_add_watch(sys.stdin.fileno(), glib.IO_IN, self.terminal_event)
